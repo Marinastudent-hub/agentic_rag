@@ -1,0 +1,14 @@
+
+flask
+flask-cors
+python-dotenv
+groq
+langgraph
+langchain-core
+langchain-groq
+chromadb
+sentence-transformers
+pypdf
+python-docx
+pandas
+numpy
