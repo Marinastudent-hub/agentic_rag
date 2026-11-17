@@ -31,3 +31,11 @@ TOP_K = 5
 # Files
 ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt", ".md"}
 CHROMA_COLLECTION = "knowledge_base"
+
+
+
+# Helper model for lightweight tasks.
+GROQ_FAST_MODEL = os.getenv("GROQ_FAST_MODEL", GROQ_MODEL)
+
+# Minimum cosine similarity score for relevant search results.
+MIN_SCORE = 0.2
