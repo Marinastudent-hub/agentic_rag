@@ -1,11 +1,16 @@
+.env
+.venv/
 venv/
 __pycache__/
 *.pyc
-.env
-data/uploads/*
-data/chroma_db/*
-!data/uploads/.gitkeep
-!data/chroma_db/.gitkeep
-.vscode/
-.idea/
-*.log
+.pytest_cache/
+.DS_Store
+instance/
+*.db
+*.sqlite
+*.sqlite3
+chroma_db/
+# Local data and uploaded documents
+data/
+*.sqlite-shm
+*.sqlite-wal

@@ -1,68 +1,122 @@
 
 """Extract text from PDF, DOCX, TXT and MD files."""
-
 from pathlib import Path
 
-from pypdf import PdfReader
 from docx import Document
+from docx.table import Table
+from docx.text.paragraph import Paragraph
+from docx.oxml.text.paragraph import CT_P
+from docx.oxml.table import CT_Tbl
+from pypdf import PdfReader
+
 
 VIRTUAL_PAGE_CHARS = 3000
 
 
 def _virtual_pages(text: str) -> list[dict]:
-    """Split files without real pages into virtual pages."""
+    """Split text files into virtual pages without losing long lines."""
     pages = []
     current = ""
-    page_no = 1
 
-    for para in text.split("\n"):
-        if len(current) + len(para) + 1 > VIRTUAL_PAGE_CHARS and current.strip():
-            pages.append({"page": page_no, "text": current})
-            page_no += 1
-            current = ""
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
 
-        current += para + "\n"
+        parts = (
+            [line[i:i + VIRTUAL_PAGE_CHARS]
+             for i in range(0, len(line), VIRTUAL_PAGE_CHARS)]
+            if len(line) > VIRTUAL_PAGE_CHARS
+            else [line]
+        )
 
-    if current.strip():
-        pages.append({"page": page_no, "text": current})
+        for part in parts:
+            candidate = current + "\n" + part if current else part
+
+            if len(candidate) > VIRTUAL_PAGE_CHARS and current:
+                pages.append({
+                    "page": len(pages) + 1,
+                    "text": current,
+                })
+                current = part
+            else:
+                current = candidate
+
+    if current:
+        pages.append({
+            "page": len(pages) + 1,
+            "text": current,
+        })
 
     return pages
 
 
 def extract_pdf(path: Path) -> list[dict]:
+    """Extract text page by page from a PDF."""
     reader = PdfReader(str(path))
     pages = []
 
-    for i, page in enumerate(reader.pages, start=1):
+    for page_number, page in enumerate(reader.pages, start=1):
         text = page.extract_text() or ""
 
         if text.strip():
-            pages.append({"page": i, "text": text})
+            pages.append({
+                "page": page_number,
+                "text": text,
+            })
 
     if not pages:
         raise ValueError(
-            f"No text found in {path.name}. It may be a scanned PDF (needs OCR)."
+            "No selectable text found in this PDF. "
+            "It may be scanned and require OCR."
         )
 
     return pages
 
 
 def extract_docx(path: Path) -> list[dict]:
-    doc = Document(str(path))
-    lines = [p.text for p in doc.paragraphs]
+    """Extract DOCX paragraphs and tables in their original order."""
+    document = Document(str(path))
+    blocks = []
 
-    for table in doc.tables:
-        for row in table.rows:
-            lines.append(" | ".join(cell.text.strip() for cell in row.cells))
+    for child in document.element.body.iterchildren():
+        if isinstance(child, CT_P):
+            paragraph = Paragraph(child, document)
+            text = paragraph.text.strip()
 
-    return _virtual_pages("\n".join(lines))
+            if text:
+                blocks.append(text)
+
+        elif isinstance(child, CT_Tbl):
+            table = Table(child, document)
+
+            for row in table.rows:
+                cells = [
+                    cell.text.strip().replace("\n", " ")
+                    for cell in row.cells
+                ]
+                row_text = " | ".join(cell for cell in cells if cell)
+
+                if row_text:
+                    blocks.append(row_text)
+
+    text = "\n\n".join(blocks)
+
+    if not text.strip():
+        raise ValueError("The DOCX file contains no readable text.")
+
+    return _virtual_pages(text)
 
 
 def extract_text_file(path: Path) -> list[dict]:
+    """Read TXT or Markdown using common encodings."""
     try:
         text = path.read_text(encoding="utf-8-sig")
     except UnicodeDecodeError:
         text = path.read_text(encoding="latin-1")
+
+    if not text.strip():
+        raise ValueError("The file contains no readable text.")
 
     return _virtual_pages(text)
 
@@ -76,11 +130,11 @@ EXTRACTORS = {
 
 
 def extract(path: Path) -> list[dict]:
-    """Extract pages from a supported document."""
+    """Extract text from a supported file."""
     path = Path(path)
-    ext = path.suffix.lower()
+    extractor = EXTRACTORS.get(path.suffix.lower())
 
-    if ext not in EXTRACTORS:
-        raise ValueError(f"Unsupported file type: {ext}")
+    if extractor is None:
+        raise ValueError(f"Unsupported file type: {path.suffix}")
 
-    return EXTRACTORS[ext](path)
+    return extractor(path)

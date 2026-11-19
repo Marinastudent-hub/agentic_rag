@@ -1,37 +1,116 @@
-"""Split text into overlapping chunks, respecting paragraph/sentence edges."""
+
+"""Split cleaned text into overlapping chunks."""
 import re
 
 
+def _split_long_text(text: str, size: int) -> list[str]:
+    """Split oversized text while preferring word boundaries."""
+    pieces = []
+
+    while len(text) > size:
+        split_at = text.rfind(" ", 0, size + 1)
+
+        if split_at <= 0:
+            split_at = size
+
+        pieces.append(text[:split_at].strip())
+        text = text[split_at:].strip()
+
+    if text:
+        pieces.append(text)
+
+    return pieces
+
+
 def _split_units(text: str, size: int) -> list[str]:
+    """Split text into paragraphs, sentences, and smaller pieces."""
     units = []
-    for para in re.split(r"\n\s*\n", text):
-        para = para.strip()
-        if not para:
+
+    for paragraph in re.split(r"\n\s*\n", text):
+        paragraph = paragraph.strip()
+
+        if not paragraph:
             continue
-        if len(para) <= size:
-            units.append(para)
+
+        if len(paragraph) <= size:
+            units.append(paragraph)
             continue
-        for sent in re.split(r"(?<=[.!?])\s+", para):
-            if len(sent) <= size:
-                units.append(sent)
-            else:  # very long sentence: hard split
-                units.extend(sent[i:i + size] for i in range(0, len(sent), size))
+
+        sentences = re.split(r"(?<=[.!?])\s+", paragraph)
+
+        for sentence in sentences:
+            sentence = sentence.strip()
+
+            if not sentence:
+                continue
+
+            if len(sentence) <= size:
+                units.append(sentence)
+            else:
+                units.extend(_split_long_text(sentence, size))
+
     return units
 
 
-def chunk_text(text: str, size: int = 1000, overlap: int = 200) -> list[str]:
-    chunks, current = [], ""
-    for unit in _split_units(text, size):
+def chunk_text(
+    text: str,
+    size: int = 1000,
+    overlap: int = 200,
+) -> list[str]:
+    """Create chunks that never exceed size characters."""
+    if not text or not text.strip():
+        return []
+
+    if size <= 0:
+        raise ValueError("Chunk size must be greater than zero.")
+
+    if overlap < 0 or overlap >= size:
+        raise ValueError("Overlap must be non-negative and smaller than chunk size.")
+
+    units = _split_units(text, size)
+    chunks = []
+    current = ""
+
+    for unit in units:
         if not current:
             current = unit
-        elif len(current) + 2 + len(unit) <= size:
-            current += "\n\n" + unit
+            continue
+
+        candidate = current + "\n\n" + unit
+
+        if len(candidate) <= size:
+            current = candidate
+            continue
+
+        chunks.append(current)
+
+        # Keep a bounded overlap from the previous chunk.
+        tail = current[-overlap:].strip() if overlap else ""
+
+        if tail and " " in tail:
+            tail = tail[tail.find(" ") + 1:]
+
+        available = size - len(unit) - 1
+
+        if available > 0 and tail:
+            tail = tail[-available:]
+            if " " in tail:
+                tail = tail[tail.find(" ") + 1:]
+
+            current = (tail + " " + unit).strip()
         else:
-            chunks.append(current)
-            tail = current[-overlap:] if overlap else ""
-            if tail and " " in tail:                 # start overlap at a word edge
-                tail = tail[tail.index(" ") + 1:]
-            current = f"{tail} {unit}".strip() if tail else unit
+            current = unit
+
     if current:
         chunks.append(current)
-    return chunks
+
+    # Final safety check: no chunk may exceed the configured limit.
+    final_chunks = []
+
+    for chunk in chunks:
+        if len(chunk) <= size:
+            final_chunks.append(chunk)
+        else:
+            final_chunks.extend(_split_long_text(chunk, size))
+
+    return [chunk for chunk in final_chunks if chunk]

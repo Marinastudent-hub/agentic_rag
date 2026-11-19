@@ -9,11 +9,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app.agent import run_agent
 
 
+
 TEST_QUESTIONS = [
     "Which documents do I have uploaded?",
     "How many days per week can employees work remotely?",
     "What is 15% of 4.2 million?",
     "Summarize the company remote work policy.",
+    (
+        "Compare the company's remote work policy with its Q3 business "
+        "performance. Calculate the percentage increase in revenue from "
+        "Q2 to Q3, identify the main source of growth, and report the "
+        "remote work limit and security requirement."
+    ),
 ]
 
 
